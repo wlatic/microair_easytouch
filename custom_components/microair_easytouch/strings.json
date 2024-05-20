@@ -1,3 +1,31 @@
 {
-  "title": "MicroAir EasyTouch"
+  "config": {
+    "step": {
+      "user": {
+        "data": {
+          "host": "[%key:common::config_flow::data::host%]",
+          "port": "[%key:common::config_flow::data::port%]"
+        }
+      }
+    },
+    "error": {
+      "api_connection_error": "[%key:common::config_flow::error::cannot_connect%]",
+      "unknown": "[%key:common::config_flow::error::unknown%]"
+    },
+    "abort": {
+      "already_configured": "[%key:common::config_flow::abort::already_configured_device%]"
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Configure HVAC Modes",
+        "description": "Set the HVAC modes for each zone.",
+        "data": {
+          "zone_0_hvac_modes": "Zone 0 HVAC Modes",
+          "zone_1_hvac_modes": "Zone 1 HVAC Modes"
+        }
+      }
+    }
+  }
 }
