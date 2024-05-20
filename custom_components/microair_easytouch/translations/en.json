@@ -15,5 +15,16 @@
         }
       }
     }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Configure HVAC Modes",
+        "description": "Set the HVAC modes for each zone.",
+        "data": {
+          "zone_hvac_modes": "Zone {zone_number} HVAC Modes"
+        }
+      }
+    }
   }
 }
