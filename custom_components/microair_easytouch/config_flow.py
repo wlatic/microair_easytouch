@@ -74,6 +74,13 @@ class MicroAirEasyTouchOptionsFlowHandler(config_entries.OptionsFlow):
         zones = self.config_entry.data.get("zones", {})
         options_schema = vol.Schema({})
 
+        hvac_modes = {
+            "heat": "Heat",
+            "cool": "Cool",
+            "fan_only": "Fan Only",
+            "off": "Off"
+        }
+
         for zone_id, zone_data in zones.items():
             zone_name = zone_data.get("Label", f"Zone {zone_id}")
             options_schema = options_schema.extend(
@@ -81,7 +88,7 @@ class MicroAirEasyTouchOptionsFlowHandler(config_entries.OptionsFlow):
                     vol.Optional(
                         f"zone_{zone_id}_hvac_modes",
                         default=self.config_entry.options.get(f"zone_{zone_id}_hvac_modes", ["heat", "cool", "fan_only", "off"]),
-                    ): cv.multi_select({"heat": "Heat", "cool": "Cool", "fan_only": "Fan Only", "off": "Off"}),
+                    ): cv.multi_select(hvac_modes),
                 }
             )
 
