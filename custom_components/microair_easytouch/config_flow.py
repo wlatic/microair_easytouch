@@ -32,14 +32,16 @@ class MicroAirEasyTouchConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     },
                 )
 
+        data_schema = vol.Schema(
+            {
+                vol.Required("host", description={"suggested_value": "Host"}): str,
+                vol.Required("port", default=5000, description={"suggested_value": "Port"}): int,
+            }
+        )
+
         return self.async_show_form(
             step_id="user",
-            data_schema=vol.Schema(
-                {
-                    vol.Required("host", description="Host"): str,
-                    vol.Required("port", description="Port", default=5000): int,
-                }
-            ),
+            data_schema=data_schema,
             errors=errors,
         )
 
@@ -80,8 +82,8 @@ class MicroAirEasyTouchOptionsFlowHandler(config_entries.OptionsFlow):
                 {
                     vol.Optional(
                         f"zone_{zone_id}_hvac_modes",
-                        description=f"HVAC Modes for {zone_name}",
                         default=self.config_entry.options.get(f"zone_{zone_id}_hvac_modes", ["heat", "cool", "fan_only", "off"]),
+                        description={"suggested_value": f"HVAC Modes for {zone_name}"},
                     ): cv.multi_select({"heat": "Heat", "cool": "Cool", "fan_only": "Fan Only", "off": "Off"}),
                 }
             )
