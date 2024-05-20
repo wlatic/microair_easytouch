@@ -1,0 +1,19 @@
+{
+  "config": {
+    "abort": {
+      "already_configured": "This device is already configured."
+    },
+    "error": {
+      "api_connection_error": "Could not connect to the API. Please check the host and port.",
+      "unknown": "An unknown error occurred."
+    },
+    "step": {
+      "user": {
+        "data": {
+          "host": "Host",
+          "port": "Port"
+        }
+      }
+    }
+  }
+}
