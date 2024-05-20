@@ -36,8 +36,8 @@ class MicroAirEasyTouchConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             step_id="user",
             data_schema=vol.Schema(
                 {
-                    vol.Required("host", description={"suggested_value": "Enter the host address"}): str,
-                    vol.Required("port", default=5000, description={"suggested_value": "Enter the port number"}): int,
+                    vol.Required("host"): str,
+                    vol.Required("port", default=5000): vol.Coerce(int),
                 }
             ),
             errors=errors,
@@ -45,7 +45,7 @@ class MicroAirEasyTouchConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
     async def verify_api_connection(self, user_input):
         try:
-            _LOGGER.info("Testing API connection to %s", user_input["host"])
+            _LOGGER.info(f"Testing API connection to {user_input['host']}")
             url = f"http://{user_input['host']}:{user_input['port']}/read"
             async with aiohttp.ClientSession() as session:
                 async with session.get(url, timeout=45) as response:
@@ -55,7 +55,7 @@ class MicroAirEasyTouchConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     zones = {str(zone["Zone"]): zone for zone in output}
                     return zones, None
         except Exception as e:
-            _LOGGER.exception("Unexpected exception for %s", user_input["host"])
+            _LOGGER.exception(f"Unexpected exception for {user_input['host']}")
             return None, "unknown"
 
     @staticmethod
@@ -80,7 +80,6 @@ class MicroAirEasyTouchOptionsFlowHandler(config_entries.OptionsFlow):
                 {
                     vol.Optional(
                         f"zone_{zone_id}_hvac_modes",
-                        description={"suggested_value": f"Select HVAC modes for {zone_name}"},
                         default=self.config_entry.options.get(f"zone_{zone_id}_hvac_modes", ["heat", "cool", "fan_only", "off"]),
                     ): cv.multi_select({"heat": "Heat", "cool": "Cool", "fan_only": "Fan Only", "off": "Off"}),
                 }
