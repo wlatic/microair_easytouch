@@ -1,0 +1,11 @@
+{
+  "domain": "microair_easytouch",
+  "name": "MicroAir EasyTouch",
+  "documentation": "https://github.com/wlatic/microair",
+  "issue_tracker": "https://github.com/wlatic/microair/issues",
+  "requirements": ["paramiko"],
+  "dependencies": [],
+  "codeowners": ["@wlatic"],
+  "config_flow": true,
+  "version": "0.0.1"
+}
