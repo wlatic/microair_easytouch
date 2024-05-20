@@ -22,8 +22,7 @@
         "title": "Configure HVAC Modes",
         "description": "Set the HVAC modes for each zone.",
         "data": {
-          "zone_0_hvac_modes": "Zone 0 HVAC Modes",
-          "zone_1_hvac_modes": "Zone 1 HVAC Modes"
+          "zone_hvac_modes": "[%key:common::config_flow::data::zone_hvac_modes%]"
         }
       }
     }
