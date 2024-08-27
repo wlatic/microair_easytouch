@@ -51,13 +51,8 @@ class MicroAirEasyTouchConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 async with session.get(url, timeout=45) as response:
                     if response.status != 200:
                         return None, "api_connection_error"
-                
                     output = await response.json()
-                
-                    # Correctly access the 'Zones' key from the JSON response
-                    zones_list = output.get("Zones", [])
-                    zones = {str(zone["Zone"]): zone for zone in zones_list}
-
+                    zones = {str(zone["Zone"]): zone for zone in output}
                     return zones, None
         except Exception as e:
             _LOGGER.exception(f"Unexpected exception for {user_input['host']}")
