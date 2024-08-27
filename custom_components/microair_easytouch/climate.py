@@ -200,11 +200,11 @@ class MicroAirEasyTouchClimate(ClimateEntity):
             "power": "On" if hvac_mode != HVACMode.OFF else "Off"
         }
         if hvac_mode == HVACMode.HEAT:
-            payload["mode"] = 1
-        elif hvac_mode == HVACMode.COOL:
             payload["mode"] = 4
+        elif hvac_mode == HVACMode.COOL:
+            payload["mode"] = 2
         elif hvac_mode == HVACMode.FAN_ONLY:
-            payload["mode"] = 3
+            payload["mode"] = 1
 
         success = await self._send_command(payload)
         if success:
@@ -227,9 +227,9 @@ class MicroAirEasyTouchClimate(ClimateEntity):
             "temperature": int(temperature)
         }
         if self._hvac_mode == HVACMode.HEAT:
-            payload["mode"] = 1  # Ensure mode is set to heating
+            payload["mode"] = 4  # Ensure mode is set to heating
         elif self._hvac_mode == HVACMode.COOL:
-            payload["mode"] = 4  # Ensure mode is set to cooling
+            payload["mode"] = 2  # Ensure mode is set to cooling
 
         success = await self._send_command(payload)
         if success:
@@ -238,13 +238,13 @@ class MicroAirEasyTouchClimate(ClimateEntity):
 
     async def async_set_fan_mode(self, fan_mode):
         """Set new target fan mode."""
-        fan_modes = {"Auto": 3, "Low": 0, "Medium": 1, "High": 2}
+        fan_modes = {"Auto": 128, "Low": 1, "Medium": 2, "High": 3}
         if fan_mode not in fan_modes:
             _LOGGER.error("Invalid fan mode: %s", fan_mode)
             return
 
         payload = {
-            "zone": self._zone_id,
+            "zone": self._zone_id - 1,
             "fan": fan_modes[fan_mode]
         }
         success = await self._send_command(payload)
