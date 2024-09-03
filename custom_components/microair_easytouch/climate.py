@@ -1,253 +1,148 @@
-import logging
-import aiohttp
-
-from homeassistant.components.climate import (
-    ClimateEntity,
+from homeassistant.components.climate import ClimateEntity
+from homeassistant.components.climate.const import (
     HVACMode,
-    UnitOfTemperature,
-    ClimateEntityFeature
+    SUPPORT_FAN_MODE,
+    SUPPORT_TARGET_TEMPERATURE,
+    FAN_LOW,
+    FAN_MEDIUM,
+    FAN_HIGH,
+    FAN_AUTO,
 )
-from homeassistant.const import ATTR_TEMPERATURE
+from homeassistant.const import TEMP_FAHRENHEIT
 
+from .api_client import MyClimateAPI
 from .const import DOMAIN
 
-_LOGGER = logging.getLogger(__name__)
-
 async def async_setup_entry(hass, entry, async_add_entities):
-    """Set up the MicroAir EasyTouch climate platform."""
-    host = entry.data["host"]
-    port = entry.data["port"]
-    zones = entry.data["zones"]
-    options = entry.options
+    """Set up the climate platform from a config entry."""
+    api = hass.data[DOMAIN][entry.entry_id]
+    status = await api.read_status()
 
-    entities = []
-    for zone_id, zone_data in zones.items():
-        climate_entity = MicroAirEasyTouchClimate(
-            hass,
-            entry,
-            f"microair_easytouch_zone_{zone_id}",
-            zone_id,
-            zone_data,
-            host,
-            port,
-            options,
-        )
-        entities.append(climate_entity)
+    if status:
+        zones = status["Zones"]
+        entities = [MyClimateDevice(api, zone, entry.entry_id) for zone in zones]
+        async_add_entities(entities, update_before_add=True)
 
-    async_add_entities(entities, True)
-    _LOGGER.info("Added %d MicroAir EasyTouch climate entities", len(entities))
+class MyClimateDevice(ClimateEntity):
+    """Representation of a single climate device."""
 
-class MicroAirEasyTouchClimate(ClimateEntity):
-    """Representation of a MicroAir EasyTouch climate entity."""
+    def __init__(self, api, zone, entry_id):
+        """Initialize the climate device."""
+        self._api = api
+        self._zone = zone
+        self._entry_id = entry_id
+        self._name = f"Climate Zone {zone['Zone']}"
 
-    def __init__(self, hass, entry, name, zone_id, initial_data, host, port, options):
-        """Initialize the climate entity."""
-        self.hass = hass
-        self.entry = entry
-        self._name = name
-        self._zone_id = zone_id
-        self._data = initial_data
-        self._host = host
-        self._port = port
-        self._options = options
+        # Unique ID for each entity
+        self._attr_unique_id = f"{entry_id}_zone_{zone['Zone']}"
 
-        self._current_temperature = float(initial_data["Inside Temperature (\u00b0F)"])
-        self._target_temperature = float(initial_data["Target Temperature (\u00b0F)"])
-        self._cooling_set_point = float(initial_data["Cooling Set Point (\u00b0F)"])
-        self._heating_set_point = float(initial_data["Heating Set Point (\u00b0F)"])
-        self._hvac_mode = self._get_hvac_mode(initial_data["Mode"])
-        self._fan_mode = initial_data["Fan Setting"]
-        self._heating_on = initial_data["Heating On"]
-        self._cooling_on = initial_data["Cooling On"]
-        self._attr_temperature_unit = UnitOfTemperature.FAHRENHEIT
-        self._attr_target_temperature_high = 86
-        self._attr_target_temperature_low = 50
-        self._attr_available = True
-        self._enable_turn_on_off_backwards_compatibility = False
+        # Initialize attributes
+        self._attr_hvac_modes = [HVACMode.HEAT, HVACMode.COOL, HVACMode.FAN_ONLY, HVACMode.OFF]
+        self._attr_hvac_mode = self._map_hvac_mode(zone["Mode"])  # Convert mode to HVACMode
+        self._attr_temperature_unit = TEMP_FAHRENHEIT
+        self._attr_target_temperature = zone["Heating Set Point (\u00b0F)"] if self._attr_hvac_mode == HVACMode.HEAT else zone["Cooling Set Point (\u00b0F)"]
+        self._attr_current_temperature = zone["Inside Temperature (\u00b0F)"]  # Use inside temperature
+        self._attr_fan_modes = [FAN_LOW, FAN_MEDIUM, FAN_HIGH, FAN_AUTO]
+        self._attr_fan_mode = self._map_fan_mode(zone["Fan Setting"])  # Convert fan setting
+        self._attr_supported_features = SUPPORT_TARGET_TEMPERATURE | SUPPORT_FAN_MODE
 
-        hvac_modes = []
-        if "heat" in self._options.get(f"zone_{zone_id}_hvac_modes", []):
-            hvac_modes.append(HVACMode.HEAT)
-        if "cool" in self._options.get(f"zone_{zone_id}_hvac_modes", []):
-            hvac_modes.append(HVACMode.COOL)
-        if "fan_only" in self._options.get(f"zone_{zone_id}_hvac_modes", []):
-            hvac_modes.append(HVACMode.FAN_ONLY)
-        hvac_modes.append(HVACMode.OFF)
-        self._attr_hvac_modes = hvac_modes
+    def _map_hvac_mode(self, mode):
+        """Map the device-specific mode to Home Assistant's HVACMode."""
+        mode_mapping = {
+            "Heating": HVACMode.HEAT,
+            "Cooling": HVACMode.COOL,
+            "Fan Only": HVACMode.FAN_ONLY,
+            "Off": HVACMode.OFF
+        }
+        return mode_mapping.get(mode, HVACMode.OFF)
 
-        self._attr_fan_modes = ["Auto", "Low", "Medium", "High"]
-
-    @property
-    def name(self):
-        """Return the name of the climate entity."""
-        return self._name
+    def _map_fan_mode(self, fan_setting):
+        """Map the device-specific fan setting to Home Assistant fan mode."""
+        fan_mapping = {
+            "Low": FAN_LOW,
+            "Medium": FAN_MEDIUM,
+            "High": FAN_HIGH,
+            "Auto": FAN_AUTO
+        }
+        return fan_mapping.get(fan_setting, FAN_AUTO)
 
     @property
     def unique_id(self):
-        """Return the unique ID of the climate entity."""
-        return f"{self.entry.entry_id}_{self._zone_id}"
+        """Return the unique ID of the climate device."""
+        return self._attr_unique_id
 
     @property
-    def supported_features(self):
-        """Return the list of supported features."""
-        supported_features= ClimateEntityFeature.FAN_MODE
-
-        if self.hvac_mode != HVACMode.FAN_ONLY:
-            supported_features |= ClimateEntityFeature.TARGET_TEMPERATURE
-        return supported_features
-
-    @property
-    def current_temperature(self):
-        """Return the current temperature."""
-        return self._current_temperature
-
-    @property
-    def target_temperature(self):
-        """Return the target temperature."""
-        return self._target_temperature
+    def name(self):
+        """Return the name of the climate device."""
+        return self._name
 
     @property
     def hvac_mode(self):
-        """Return the current HVAC mode."""
-        return self._hvac_mode
+        """Return the current operation mode."""
+        return self._attr_hvac_mode
 
     @property
-    def hvac_action(self):
-        """Return the current HVAC action (heating, cooling, or idle)."""
-        if self._heating_on:
-            return "heating"
-        if self._cooling_on:
-            return "cooling"
-        return "idle"
+    def hvac_modes(self):
+        """Return the list of available operation modes."""
+        return self._attr_hvac_modes
 
     @property
     def fan_mode(self):
-        """Return the current fan mode."""
-        return self._fan_mode
+        """Return the current fan setting."""
+        return self._attr_fan_mode
 
     @property
     def fan_modes(self):
         """Return the list of available fan modes."""
-        return ["Auto", "Low", "Medium", "High"]
+        return self._attr_fan_modes
 
-    async def async_update(self):
-        """Update the entity data."""
-        try:
-            url = f"http://{self._host}:{self._port}/read"
-            async with aiohttp.ClientSession() as session:
-                async with session.get(url, timeout=45) as response:
-                    if response.status != 200:
-                        _LOGGER.error("Error fetching data from MicroAir EasyTouch device: %s", response.status)
-                        return
+    @property
+    def temperature_unit(self):
+        """Return the unit of measurement used by the platform."""
+        return self._attr_temperature_unit
 
-                    output = await response.json()
-                    _LOGGER.debug("API response: %s", output)
+    @property
+    def target_temperature(self):
+        """Return the temperature we try to reach."""
+        return self._attr_target_temperature
 
-                    zones = {str(zone["Zone"]): zone for zone in output}
-                    _LOGGER.debug("Parsed zones: %s", zones)
+    @property
+    def current_temperature(self):
+        """Return the current temperature inside the climate zone."""
+        return self._attr_current_temperature
 
-                    if str(self._zone_id) in zones:
-                        self._data = zones[str(self._zone_id)]
-                        self._current_temperature = float(self._data["Inside Temperature (\u00b0F)"])
-                        self._target_temperature = float(self._data["Target Temperature (\u00b0F)"])
-                        self._cooling_set_point = float(self._data["Cooling Set Point (\u00b0F)"])
-                        self._heating_set_point = float(self._data["Heating Set Point (\u00b0F)"])
-                        self._hvac_mode = self._get_hvac_mode(self._data["Mode"])
-                        self._fan_mode = self._data["Fan Setting"]
-                        self._heating_on = self._data["Heating On"]
-                        self._cooling_on = self._data["Cooling On"]
-                        self.async_write_ha_state()
-                    else:
-                        _LOGGER.error("Zone ID %s not found in the API response", self._zone_id)
-                        _LOGGER.debug("Available zones in response: %s", list(zones.keys()))
-        except Exception as e:
-            _LOGGER.exception("Error updating data from MicroAir EasyTouch device")
-
-    def _get_hvac_mode(self, mode):
-        if mode == "Off":
-            return HVACMode.OFF
-        elif mode == "Heating":
-            return HVACMode.HEAT
-        elif mode == "Cooling":
-            return HVACMode.COOL
-        elif mode == "Fan Only":
-            return HVACMode.FAN_ONLY
-        return HVACMode.OFF
-
-    async def _send_command(self, payload):
-        """Send command to the device."""
-        url = f"http://{self._host}:{self._port}/write"
-        try:
-            async with aiohttp.ClientSession() as session:
-                async with session.post(url, json=payload, timeout=45) as response:
-                    if response.status != 200:
-                        _LOGGER.error("Error sending command to MicroAir EasyTouch device: %s", response.status)
-                        return False
-                    _LOGGER.debug("Command response: %s", await response.json())
-                    return True
-        except Exception as e:
-            _LOGGER.exception("Error sending command to MicroAir EasyTouch device")
-            return False
-
-    async def async_set_hvac_mode(self, hvac_mode):
-        """Set new target hvac mode."""
-        if hvac_mode not in self._attr_hvac_modes:
-            _LOGGER.warning(f"Mode {hvac_mode} is not supported for this zone")
-            return
-
-        payload = {
-            "zone": self._zone_id,
-            "power": "On" if hvac_mode != HVACMode.OFF else "Off"
-        }
-        if hvac_mode == HVACMode.HEAT:
-            payload["mode"] = 1
-        elif hvac_mode == HVACMode.COOL:
-            payload["mode"] = 4
-        elif hvac_mode == HVACMode.FAN_ONLY:
-            payload["mode"] = 3
-
-        success = await self._send_command(payload)
-        if success:
-            self._hvac_mode = hvac_mode
-            self.async_write_ha_state()
+    @property
+    def supported_features(self):
+        """Return the list of supported features."""
+        return self._attr_supported_features
 
     async def async_set_temperature(self, **kwargs):
-        """Set new target temperature."""
-        temperature = kwargs.get(ATTR_TEMPERATURE)
-        if temperature is None:
-            return
+        """Set a new target temperature."""
+        temperature = kwargs.get('temperature')
+        if temperature is not None:
+            changes = {"temperature": temperature}
+            await self._api.send_command(self._zone["Zone"], changes)
+            self._attr_target_temperature = temperature  # Update local state
 
-        if HVACMode.FAN_ONLY in self._attr_hvac_modes and self._hvac_mode == HVACMode.FAN_ONLY:
-            _LOGGER.warning("Cannot set temperature in fan-only mode")
-            return
-
-        # Determine if heating or cooling based on current hvac mode
-        payload = {
-            "zone": self._zone_id,
-            "temperature": int(temperature)
-        }
-        if self._hvac_mode == HVACMode.HEAT:
-            payload["mode"] = 1  # Ensure mode is set to heating
-        elif self._hvac_mode == HVACMode.COOL:
-            payload["mode"] = 4  # Ensure mode is set to cooling
-
-        success = await self._send_command(payload)
-        if success:
-            self._target_temperature = temperature
-            self.async_write_ha_state()
+    async def async_set_hvac_mode(self, hvac_mode):
+        """Set a new HVAC mode."""
+        changes = {"mode": hvac_mode}
+        await self._api.send_command(self._zone["Zone"], changes)
+        self._attr_hvac_mode = hvac_mode  # Update local state
 
     async def async_set_fan_mode(self, fan_mode):
-        """Set new target fan mode."""
-        fan_modes = {"Auto": 3, "Low": 0, "Medium": 1, "High": 2}
-        if fan_mode not in fan_modes:
-            _LOGGER.error("Invalid fan mode: %s", fan_mode)
-            return
+        """Set a new fan mode."""
+        changes = {"fan_speed": fan_mode}
+        await self._api.send_command(self._zone["Zone"], changes)
+        self._attr_fan_mode = fan_mode  # Update local state
 
-        payload = {
-            "zone": self._zone_id,
-            "fan": fan_modes[fan_mode]
-        }
-        success = await self._send_command(payload)
-        if success:
-            self._fan_mode = fan_mode
-            self.async_write_ha_state()
+    async def async_update(self):
+        """Fetch new state data for the sensor."""
+        status = await self._api.read_status()
+        if status:
+            zone = next((z for z in status["Zones"] if z["Zone"] == self._zone["Zone"]), None)
+            if zone:
+                self._attr_target_temperature = zone["Heating Set Point (\u00b0F)"] if self._attr_hvac_mode == HVACMode.HEAT else zone["Cooling Set Point (\u00b0F)"]
+                self._attr_current_temperature = zone["Inside Temperature (\u00b0F)"]
+                self._attr_hvac_mode = self._map_hvac_mode(zone["Mode"])  # Convert mode
+                self._attr_fan_mode = self._map_fan_mode(zone["Fan Setting"])  # Convert fan setting
