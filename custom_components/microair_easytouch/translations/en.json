@@ -1,28 +1,10 @@
 {
   "config": {
-    "abort": {
-      "already_configured": "This device is already configured."
-    },
-    "error": {
-      "api_connection_error": "Could not connect to the API. Please check the host and port.",
-      "unknown": "An unknown error occurred."
-    },
     "step": {
       "user": {
         "data": {
-          "host": "Host",
+          "ip_address": "IP Address",
           "port": "Port"
-        }
-      }
-    }
-  },
-  "options": {
-    "step": {
-      "init": {
-        "title": "Configure HVAC Modes",
-        "description": "Set the HVAC modes for each zone.",
-        "data": {
-          "zone_hvac_modes": "Zone {zone_number} HVAC Modes"
         }
       }
     }
