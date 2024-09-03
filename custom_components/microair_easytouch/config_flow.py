@@ -2,8 +2,13 @@ from homeassistant import config_entries
 from homeassistant.core import callback
 import voluptuous as vol
 import homeassistant.helpers.config_validation as cv
+import logging
+import aiohttp
+import asyncio
 
 from .const import DOMAIN, CONF_IP_ADDRESS, CONF_PORT, DEFAULT_PORT
+
+_LOGGER = logging.getLogger(__name__)
 
 @config_entries.HANDLERS.register(DOMAIN)
 class MyClimateConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
@@ -22,6 +27,10 @@ class MyClimateConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             port = user_input.get(CONF_PORT, DEFAULT_PORT)
             
             if await self._test_api_connection(ip, port):
+                # Add entities key to user_input with an empty list if not provided
+                if "entities" not in user_input:
+                    user_input["entities"] = []  # Ensure entities key exists
+
                 return self.async_create_entry(title="My Climate Integration", data=user_input)
             else:
                 errors["base"] = "cannot_connect"
@@ -57,47 +66,46 @@ class MyClimateOptionsFlowHandler(config_entries.OptionsFlow):
     def __init__(self, config_entry):
         """Initialize options flow."""
         self.config_entry = config_entry
-        self.device_id = None
+        self.entity_id = None
 
     async def async_step_init(self, user_input=None):
-        """Show the list of devices to select for configuration."""
-        # Correctly access device information from the configuration entry data
-        devices = self.config_entry.data.get("devices", [])  # Assuming 'devices' is correctly set in config entry data
-        if not devices:
-            # If devices are not found, log an error and return
-            _LOGGER.error("No devices found in configuration data.")
-            return self.async_abort(reason="no_devices")
+        """Show the list of entities to select for configuration."""
+        entities = self.config_entry.data.get("entities", [])
+        
+        if not entities:
+            _LOGGER.error("No entities found in configuration data. Ensure entities are added during configuration.")
+            return self.async_abort(reason="no_entities")
 
-        device_list = {device["id"]: device["name"] for device in devices}
+        entity_list = {entity["id"]: entity["name"] for entity in entities}
 
         if user_input is not None:
-            # Save the selected device ID and move to the next step
-            self.device_id = user_input["device"]
-            return await self.async_step_device_options()
+            # Save the selected entity ID and move to the next step
+            self.entity_id = user_input["entity"]
+            return await self.async_step_entity_options()
 
         return self.async_show_form(
             step_id="init",
             data_schema=vol.Schema({
-                vol.Required("device"): vol.In(device_list)
+                vol.Required("entity"): vol.In(entity_list)
             }),
         )
 
-    async def async_step_device_options(self, user_input=None):
-        """Manage the options for the selected device."""
-        device_settings = self.config_entry.options.get("device_settings", {})
-        current_device_settings = device_settings.get(self.device_id, {})
+    async def async_step_entity_options(self, user_input=None):
+        """Manage the options for the selected entity."""
+        entity_settings = self.config_entry.options.get("entity_settings", {})
+        current_entity_settings = entity_settings.get(self.entity_id, {})
 
         if user_input is not None:
-            # Save the user-selected options for the specific device
-            device_settings[self.device_id] = user_input
+            # Save the user-selected options for the specific entity
+            entity_settings[self.entity_id] = user_input
             self.hass.config_entries.async_update_entry(
-                self.config_entry, options={"device_settings": device_settings}
+                self.config_entry, options={"entity_settings": entity_settings}
             )
             return self.async_create_entry(title="", data={})
 
-        # Default options schema for per-device settings
+        # Default options schema for per-entity settings
         options_schema = vol.Schema({
-            vol.Optional("enabled_modes", default=current_device_settings.get("enabled_modes", ["heat", "cool", "fan_only"])): cv.multi_select(["heat", "cool", "fan_only"])
+            vol.Optional("enabled_modes", default=current_entity_settings.get("enabled_modes", ["heat", "cool", "fan_only"])): cv.multi_select(["heat", "cool", "fan_only"])
         })
 
-        return self.async_show_form(step_id="device_options", data_schema=options_schema)
+        return self.async_show_form(step_id="entity_options", data_schema=options_schema)
