@@ -24,10 +24,17 @@ class MyClimateAPI:
     async def send_command(self, zone, changes):
         """Send a control command to the device."""
         payload = {
-            "Type": "Change",
-            "Zone": zone,
-            "Changes": changes
+            "zone": zone,
         }
+        
+        if "power" in changes:
+            payload["power"] = changes["power"]
+        if "mode" in changes:
+            payload["mode"] = changes["mode"]
+        if "temperature" in changes:
+            payload["temperature"] = changes["temperature"]
+        if "fan" in changes:
+            payload["fan"] = changes["fan"]
 
         try:
             async with self._session.post(f"{self._base_url}/write", json=payload) as response:
