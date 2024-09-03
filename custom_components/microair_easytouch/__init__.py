@@ -4,7 +4,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.typing import ConfigType
 
 from .const import DOMAIN, CONF_IP_ADDRESS, CONF_PORT, DEFAULT_PORT
-from .api_client import MyClimateAPI  # Import MyClimateAPI class
+from .api_client import MyClimateAPI
 
 async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
     """Set up the My Climate Integration component."""
@@ -22,23 +22,14 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     hass.data[DOMAIN][entry.entry_id] = api_client
 
     # Add the climate platform
-    hass.async_create_task(
-        hass.config_entries.async_forward_entry_setup(entry, "climate")
-    )
+    await hass.config_entries.async_forward_entry_setup(entry, "climate")
 
-    # Listen for options update
-    entry.add_update_listener(update_listener)
-    
     return True
-
-async def update_listener(hass: HomeAssistant, entry: ConfigEntry):
-    """Handle options update."""
-    # Reconfigure integration with updated options
-    await async_setup_entry(hass, entry)
 
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Unload a config entry."""
-    await hass.config_entries.async_forward_entry_unload(entry, "climate")
-    hass.data[DOMAIN].pop(entry.entry_id)
+    unload_ok = await hass.config_entries.async_unload_platforms(entry, ["climate"])
+    if unload_ok:
+        hass.data[DOMAIN].pop(entry.entry_id)
 
-    return True
+    return unload_ok
