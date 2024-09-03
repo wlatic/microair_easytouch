@@ -1,95 +1,46 @@
-import logging
-import aiohttp
-import voluptuous as vol
-
 from homeassistant import config_entries
 from homeassistant.core import callback
-from homeassistant.helpers import config_validation as cv
-from .const import DOMAIN
+import voluptuous as vol
+import aiohttp
+import asyncio
 
-_LOGGER = logging.getLogger(__name__)
+from .const import DOMAIN, CONF_IP_ADDRESS, CONF_PORT, DEFAULT_PORT
 
-class MicroAirEasyTouchConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
+@config_entries.HANDLERS.register(DOMAIN)
+class MyClimateConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
+    """Handle a config flow for My Climate Integration."""
+
     VERSION = 1
-    CONNECTION_CLASS = config_entries.CONN_CLASS_LOCAL_POLL
+    CONNECTION_CLASS = config_entries.CONN_CLASS_LOCAL_PUSH
 
     async def async_step_user(self, user_input=None):
+        """Handle the initial step."""
         errors = {}
 
         if user_input is not None:
-            zones, api_error = await self.verify_api_connection(user_input)
-
-            if api_error:
-                errors["base"] = api_error
-                _LOGGER.error(f"API error: {api_error}")
+            # Validate the IP and port
+            ip = user_input[CONF_IP_ADDRESS]
+            port = user_input.get(CONF_PORT, DEFAULT_PORT)
+            
+            if await self._test_api_connection(ip, port):
+                return self.async_create_entry(title="My Climate Integration", data=user_input)
             else:
-                return self.async_create_entry(
-                    title=user_input["host"],
-                    data={
-                        "host": user_input["host"],
-                        "port": user_input["port"],
-                        "zones": zones,
-                    },
-                )
+                errors["base"] = "cannot_connect"
 
         return self.async_show_form(
             step_id="user",
-            data_schema=vol.Schema(
-                {
-                    vol.Required("host"): str,
-                    vol.Required("port", default=5000): vol.Coerce(int),
-                }
-            ),
+            data_schema=vol.Schema({
+                vol.Required(CONF_IP_ADDRESS): str,
+                vol.Optional(CONF_PORT, default=DEFAULT_PORT): int,
+            }),
             errors=errors,
         )
 
-    async def verify_api_connection(self, user_input):
+    async def _test_api_connection(self, ip, port):
+        """Test if the provided IP and port can connect to the API."""
         try:
-            _LOGGER.info(f"Testing API connection to {user_input['host']}")
-            url = f"http://{user_input['host']}:{user_input['port']}/read"
             async with aiohttp.ClientSession() as session:
-                async with session.get(url, timeout=45) as response:
-                    if response.status != 200:
-                        return None, "api_connection_error"
-                    output = await response.json()
-                    zones = {str(zone["Zone"]): zone for zone in output}
-                    return zones, None
-        except Exception as e:
-            _LOGGER.exception(f"Unexpected exception for {user_input['host']}")
-            return None, "unknown"
-
-    @staticmethod
-    @callback
-    def async_get_options_flow(config_entry):
-        return MicroAirEasyTouchOptionsFlowHandler(config_entry)
-
-class MicroAirEasyTouchOptionsFlowHandler(config_entries.OptionsFlow):
-    def __init__(self, config_entry):
-        self.config_entry = config_entry
-
-    async def async_step_init(self, user_input=None):
-        if user_input is not None:
-            return self.async_create_entry(title="", data=user_input)
-
-        zones = self.config_entry.data.get("zones", {})
-        options_schema = vol.Schema({})
-
-        hvac_modes = {
-            "heat": "Heat",
-            "cool": "Cool",
-            "fan_only": "Fan Only",
-            "off": "Off"
-        }
-
-        for zone_id, zone_data in zones.items():
-            zone_name = zone_data.get("Label", f"Zone {zone_id}")
-            options_schema = options_schema.extend(
-                {
-                    vol.Optional(
-                        f"zone_{zone_id}_hvac_modes",
-                        default=self.config_entry.options.get(f"zone_{zone_id}_hvac_modes", ["heat", "cool", "fan_only", "off"]),
-                    ): cv.multi_select(hvac_modes),
-                }
-            )
-
-        return self.async_show_form(step_id="init", data_schema=options_schema)
+                async with session.get(f'http://{ip}:{port}/read') as response:
+                    return response.status == 200
+        except (aiohttp.ClientError, asyncio.TimeoutError):
+            return False
